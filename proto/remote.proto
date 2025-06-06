@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package prometheus;
 
-option go_package = "github.com/couchbase/cb_prom_remote/proto";
+option go_package = "github.com/sudosalim/cb_prom_remote/proto";
 
 // WriteRequest represents a Prometheus remote write request
 message WriteRequest {

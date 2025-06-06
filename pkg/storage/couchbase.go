@@ -9,8 +9,8 @@ import (
 
 	"github.com/couchbase/gocb/v2"
 
-	"github.com/couchbase/cb_prom_remote/pkg/config"
-	pb "github.com/couchbase/cb_prom_remote/proto"
+	"github.com/sudosalim/cb_prom_remote/pkg/config"
+	pb "github.com/sudosalim/cb_prom_remote/proto"
 )
 
 // CouchbaseWriter implements Writer interface for Couchbase storage

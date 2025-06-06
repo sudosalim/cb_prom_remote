@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/couchbase/cb_prom_remote/proto"
+	pb "github.com/sudosalim/cb_prom_remote/proto"
 )
 
 // TimeSeriesDocument represents a Couchbase time series document

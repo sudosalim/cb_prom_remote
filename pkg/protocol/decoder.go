@@ -7,7 +7,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/couchbase/cb_prom_remote/proto"
+	pb "github.com/sudosalim/cb_prom_remote/proto"
 )
 
 // CompressionType represents the type of compression used

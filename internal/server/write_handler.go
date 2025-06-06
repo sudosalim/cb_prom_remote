@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/couchbase/cb_prom_remote/pkg/config"
-	"github.com/couchbase/cb_prom_remote/pkg/protocol"
-	"github.com/couchbase/cb_prom_remote/pkg/storage"
-	pb "github.com/couchbase/cb_prom_remote/proto"
+	"github.com/sudosalim/cb_prom_remote/pkg/config"
+	"github.com/sudosalim/cb_prom_remote/pkg/protocol"
+	"github.com/sudosalim/cb_prom_remote/pkg/storage"
+	pb "github.com/sudosalim/cb_prom_remote/proto"
 )
 
 const (

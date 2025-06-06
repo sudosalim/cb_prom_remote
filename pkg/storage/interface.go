@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	pb "github.com/couchbase/cb_prom_remote/proto"
+	pb "github.com/sudosalim/cb_prom_remote/proto"
 )
 
 // Writer defines the interface for storing time series data

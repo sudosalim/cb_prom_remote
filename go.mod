@@ -1,4 +1,4 @@
-module github.com/couchbase/cb_prom_remote
+module github.com/sudosalim/cb_prom_remote
 
 go 1.21
 

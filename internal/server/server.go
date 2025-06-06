@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/couchbase/cb_prom_remote/pkg/config"
+	"github.com/sudosalim/cb_prom_remote/pkg/config"
 )
 
 // Server represents the HTTP server for remote write operations

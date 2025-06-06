@@ -10,9 +10,9 @@ import (
 	"github.com/golang/snappy"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/couchbase/cb_prom_remote/internal/server"
-	"github.com/couchbase/cb_prom_remote/pkg/config"
-	pb "github.com/couchbase/cb_prom_remote/proto"
+	"github.com/sudosalim/cb_prom_remote/internal/server"
+	"github.com/sudosalim/cb_prom_remote/pkg/config"
+	pb "github.com/sudosalim/cb_prom_remote/proto"
 )
 
 func TestRemoteWriteHTTPLayer(t *testing.T) {
