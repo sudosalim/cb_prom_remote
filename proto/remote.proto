@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package prometheus;
+
+option go_package = "github.com/couchbase/cb_prom_remote/proto";
+
+// WriteRequest represents a Prometheus remote write request
+message WriteRequest {
+  repeated TimeSeries timeseries = 1;
+  // Cortex uses this field to determine the source of the write request.
+  // We reserve it to avoid any compatibility issues.
+  reserved 2;
+  // Prometheus uses this field to send metadata, but this is
+  // omitted from v1 of the spec as it is experimental.
+  reserved 3;
+}
+
+// TimeSeries represents a time series with labels and samples
+message TimeSeries {
+  repeated Label labels = 1;
+  repeated Sample samples = 2;
+}
+
+// Label represents a metric label
+message Label {
+  string name = 1;
+  string value = 2;
+}
+
+// Sample represents a single metric sample
+message Sample {
+  double value = 1;
+  int64 timestamp = 2; // milliseconds since Unix epoch
+} 

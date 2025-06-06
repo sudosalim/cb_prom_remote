@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 60s
+
+scrape_configs:
+  # Scrape vmagent itself (Enable when needed)
+  # - job_name: 'vmagent'
+  #   static_configs:
+  #     - targets: ['localhost:8429']
+  #   scrape_interval: 5s
+  #   metrics_path: /metrics
+
+  # Scrape remote write service metrics (Enable when needed)
+  # - job_name: 'cb-remote-write'
+  #   static_configs:
+  #     - targets: ['remote-write:8080']
+  #   scrape_interval: 10s
+  #   metrics_path: /metrics
+
+  # Couchbase Server being scraped by vmagent
+  - job_name: 'cb-server'
+    basic_auth:
+      username: <username>
+      password: <password>
+    scheme: "http"
+    http_sd_configs:
+    - url: http://<ip>:8091/prometheus_sd_config?port=insecure
+      basic_auth:
+        username: <username>
+        password: <password>

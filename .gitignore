@@ -1,0 +1,96 @@
+# Binaries for programs and plugins
+*.so
+*.dylib
+bin/
+dist/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+
+# Build artifacts
+remote-write
+remote-read
+*.bin
+
+# Environment files (contain sensitive credentials)
+.env
+*.env
+config/*.env
+!config/*.env.example
+
+# Configuration files with credentials
+config/local.yaml
+config/production.yaml
+config/staging.yaml
+*.local.yaml
+
+# Docker
+.dockerignore
+compose.override.yml
+compose.override.yaml
+
+# Docker volumes and data
+/data/
+/volumes/
+couchbase_data/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+/log/
+
+# Temporary files
+/tmp/
+*.tmp
+*.temp
+
+# Test coverage
+coverage.out
+coverage.html
+*.cover
+
+# Profiling data
+*.prof
+*.pprof
+
+# Development certificates
+*.pem
+*.key
+*.crt
+certificates/
+
+# Backup files
+*.bak
+*.backup
+
+# Local development overrides
+docker-compose.local.yml
+local-config.yaml
+
+# Generated protobuf files (if we want to regenerate them)
+# proto/*.pb.go
+
+# Runtime data
+pid
+*.pid
+*.seed
+
+# Dependency analysis
+go.sum.backup
