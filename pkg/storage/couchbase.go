@@ -2,8 +2,10 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"math"
 	"sync"
 	"time"
 
@@ -113,10 +115,11 @@ func (w *CouchbaseWriter) Write(ctx context.Context, req *pb.WriteRequest) error
 			return fmt.Errorf("invalid labels: %w", err)
 		}
 		
-		// Filter out stale markers if configured
+		// Filter out stale markers and any NaN values
 		filteredSamples := make([]Sample, 0, len(ts.Samples))
 		for _, sample := range ts.Samples {
-			if !IsStaleMarker(sample.Value) {
+			// Filter out NaN values (including stale markers) and infinite values
+			if !IsStaleMarker(sample.Value) && !isNaNOrInf(sample.Value) {
 				filteredSamples = append(filteredSamples, sample)
 			}
 		}
@@ -168,32 +171,69 @@ func (w *CouchbaseWriter) flushBatch(ctx context.Context) error {
 		w.metrics.FlushLatency = time.Since(start)
 	}()
 
-	// Group by document key
-	documents := make(map[string]*TimeSeriesDocument)
+	// Group new time series by document key
+	newSeriesByDocKey := make(map[string][]*TimeSeries)
 	
 	for _, ts := range currentBatch {
 		timeWindow := time.UnixMilli(ts.Samples[0].Timestamp)
 		docKey := ts.DocumentKey(timeWindow, w.config.Storage.TimeSeriesInterval)
+		newSeriesByDocKey[docKey] = append(newSeriesByDocKey[docKey], ts)
+	}
+
+	// Process each document
+	for docKey, newSeries := range newSeriesByDocKey {
+		// First, try to get existing document
+		var existingDoc *TimeSeriesDocument
+		getResult, err := w.collection.Get(docKey, &gocb.GetOptions{
+			Timeout: w.config.Couchbase.KVTimeout,
+		})
 		
-		if existingDoc, exists := documents[docKey]; exists {
-			// Merge samples into existing document
-			if err := w.mergeTimeSeriesIntoDocument(existingDoc, ts); err != nil {
-				log.Printf("Failed to merge time series: %v", err)
+		if err == nil {
+			// Document exists, decode it
+			err = getResult.Content(&existingDoc)
+			if err != nil {
+				log.Printf("Failed to decode existing document %s: %v", docKey, err)
 				continue
 			}
 		} else {
-			// Create new document
-			doc := ts.ToDocument(false, 0) // Use irregular format for simplicity
-			if doc != nil {
-				documents[docKey] = doc
+			// Document doesn't exist or error occurred
+			// Check if it's a "not found" error
+			if !isNotFoundError(err) {
+				log.Printf("Failed to get document %s: %v", docKey, err)
+				w.metrics.WriteErrorsTotal++
+				continue
 			}
 		}
-	}
 
-	// Write documents to Couchbase
-	for docKey, doc := range documents {
-		// Upsert document
-		_, err := w.collection.Upsert(docKey, doc, &gocb.UpsertOptions{
+		var finalDoc *TimeSeriesDocument
+
+		if existingDoc != nil {
+			// Append new samples to existing document
+			finalDoc = existingDoc
+			for _, ts := range newSeries {
+				if err := w.appendTimeSeriestoDocument(finalDoc, ts); err != nil {
+					log.Printf("Failed to append time series to document %s: %v", docKey, err)
+					continue
+				}
+			}
+		} else {
+			// Create new document from first time series
+			finalDoc = newSeries[0].ToDocument(false, 0)
+			if finalDoc == nil {
+				continue
+			}
+
+			// Merge remaining time series into the new document
+			for _, ts := range newSeries[1:] {
+				if err := w.mergeTimeSeriesIntoDocument(finalDoc, ts); err != nil {
+					log.Printf("Failed to merge time series into new document: %v", err)
+					continue
+				}
+			}
+		}
+
+		// Upsert the final document
+		_, err = w.collection.Upsert(docKey, finalDoc, &gocb.UpsertOptions{
 			Expiry:  w.config.Storage.RetentionPeriod,
 			Timeout: w.config.Couchbase.KVTimeout,
 		})
@@ -206,7 +246,7 @@ func (w *CouchbaseWriter) flushBatch(ctx context.Context) error {
 	}
 
 	w.metrics.WritesTotal++
-	log.Printf("Flushed batch of %d time series into %d documents", len(currentBatch), len(documents))
+	log.Printf("Flushed batch of %d time series into %d documents", len(currentBatch), len(newSeriesByDocKey))
 	
 	return nil
 }
@@ -247,6 +287,77 @@ func (w *CouchbaseWriter) mergeTimeSeriesIntoDocument(doc *TimeSeriesDocument, t
 	doc.Version++
 
 	return nil
+}
+
+// appendTimeSeriestoDocument appends new samples to an existing document, preserving existing data
+func (w *CouchbaseWriter) appendTimeSeriestoDocument(doc *TimeSeriesDocument, ts *TimeSeries) error {
+	if len(ts.Samples) == 0 {
+		return nil
+	}
+
+	// Update ts_end if new samples are later
+	if ts.Samples[len(ts.Samples)-1].Timestamp > doc.TsEnd {
+		doc.TsEnd = ts.Samples[len(ts.Samples)-1].Timestamp
+	}
+
+	// Update ts_start if new samples are earlier
+	if ts.Samples[0].Timestamp < doc.TsStart {
+		doc.TsStart = ts.Samples[0].Timestamp
+	}
+
+	// Append new samples to existing data (handling both formats from JSON unmarshaling)
+	if existingData, ok := doc.TsData.([][]interface{}); ok {
+		// Direct format match - append new samples
+		updatedData := existingData
+		for _, sample := range ts.Samples {
+			updatedData = append(updatedData, []interface{}{sample.Timestamp, sample.Value})
+		}
+		doc.TsData = updatedData
+	} else if existingSlice, ok := doc.TsData.([]interface{}); ok {
+		// JSON unmarshaling converted [][]interface{} to []interface{} - convert back
+		updatedData := make([][]interface{}, 0, len(existingSlice)+len(ts.Samples))
+
+		// Convert existing data
+		for _, item := range existingSlice {
+			if itemSlice, ok := item.([]interface{}); ok && len(itemSlice) == 2 {
+				updatedData = append(updatedData, itemSlice)
+			}
+		}
+
+		// Add new samples
+		for _, sample := range ts.Samples {
+			updatedData = append(updatedData, []interface{}{sample.Timestamp, sample.Value})
+		}
+
+		doc.TsData = updatedData
+	} else {
+		// If existing data is not in any expected format, start fresh with new samples
+		newData := make([][]interface{}, 0, len(ts.Samples))
+		for _, sample := range ts.Samples {
+			newData = append(newData, []interface{}{sample.Timestamp, sample.Value})
+		}
+		doc.TsData = newData
+	}
+
+	// Update metadata
+	doc.UpdatedAt = time.Now()
+	doc.Version++
+
+	return nil
+}
+
+// isNotFoundError checks if the error is a "document not found" error
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check for Couchbase "document not found" error
+	return errors.Is(err, gocb.ErrDocumentNotFound)
+}
+
+// isNaNOrInf checks if a float64 value is NaN or infinite
+func isNaNOrInf(value float64) bool {
+	return math.IsNaN(value) || math.IsInf(value, 0)
 }
 
 // startBatchFlusher starts a background goroutine to flush batches periodically
