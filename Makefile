@@ -57,14 +57,15 @@ docker-build:
 	docker build -t cb-remote-write:latest .
 
 # Docker Compose targets
+COMPOSE_FILE := compose
 compose-up:
-	cd deploy && docker compose up -d
+	cd deploy && docker compose -f ${COMPOSE_FILE}.yml up -d
 
 compose-down:
-	cd deploy && docker compose down
+	cd deploy && docker compose -f ${COMPOSE_FILE}.yml down
 
 compose-logs:
-	cd deploy && docker compose logs -f
+	cd deploy && docker compose -f ${COMPOSE_FILE}.yml logs -f
 
 # Test with local Couchbase
 test-local: compose-up

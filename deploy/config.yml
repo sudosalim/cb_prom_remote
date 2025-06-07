@@ -2,8 +2,8 @@ global:
   scrape_interval: 60s
 
 scrape_configs:
-  # Scrape vmagent itself (Enable when needed)
-  # - job_name: 'vmagent'
+  # Scrape the agent itself (Enable when needed)
+  # - job_name: 'agent'
   #   static_configs:
   #     - targets: ['localhost:8429']
   #   scrape_interval: 5s
@@ -16,7 +16,7 @@ scrape_configs:
   #   scrape_interval: 10s
   #   metrics_path: /metrics
 
-  # Couchbase Server being scraped by vmagent
+  # Couchbase Server being scraped by the agent
   - job_name: 'cb-server'
     basic_auth:
       username: <username>

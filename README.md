@@ -24,7 +24,7 @@ This project provides separate services for remote write and remote read, which 
 │   └── metrics/              # Internal metrics
 ├── internal/server/          # HTTP server implementations
 ├── proto/                    # Protobuf definitions
-├── deploy/                   # Deployment configurations
+├── deploy/                   # Docker deployment configurations
 └── test/                     # Integration tests
 ```
 
@@ -33,7 +33,7 @@ This project provides separate services for remote write and remote read, which 
 ### Remote Write Service
 - Receives Prometheus remote write requests
 - Processes and stores time series data to a Couchbase cluster
-- Supports both Prometheus (Snappy) and VictoriaMetrics (zstd) protocols
+- Supports both Snappy and zstd compression.
 
 ### Remote Read Service (Not yet implemented)
 - Handles Prometheus remote read queries
@@ -58,11 +58,20 @@ See `config/env.example` for a complete example.
 ## Deployment
 
 ### Local Development with Docker Compose
+1. In deploy directory, copy both compose.yml and vmagent-config.yml
 
 ```bash
-# Start Remote Write + vmagent
+# Create your local deployment configs
 cd deploy
-docker-compose up -d
+cp compose.yml compose.local.yml
+cp config.yml config.local.yml
+```
+They update your local configs as you wish. You can then start the services with docker compose.
+```bash
+# Start Remote Write + vmagent
+cd deploy && docker compose -f compose.local.yml up -d
+# Or using make (on top directory):
+make compose-up COMPOSE_FILE=compose.local
 
 # Check health
 curl http://localhost:8080/health
@@ -76,12 +85,11 @@ Services can be deployed independently:
 - Scale remote read based on query load
 - Different resource allocations per service type
 
-### vmagent Configuration
+### Prometheus Agent Configuration
 
-Configure vmagent to send metrics to the remote write service:
+Configure Prometheus (or other compartible senders) to send metrics to the remote write service:
 
 ```yaml
-# vmagent.yml
 global:
   scrape_interval: 60s
 

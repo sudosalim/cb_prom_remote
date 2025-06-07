@@ -77,7 +77,7 @@ certificates/
 
 # Local development overrides
 compose.local.yml
-local-config.yaml
+config.local.yml
 
 # Generated protobuf files (if we want to regenerate them)
 # proto/*.pb.go
