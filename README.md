@@ -43,10 +43,10 @@ This project provides separate services for remote write and remote read, which 
 
 The service supports configuration via environment variables or YAML files:
 
-### Environment Variables (recommended for production)
+### Environment Variables
 
 ```bash
-# Couchbase Connection (for Capella)
+# Couchbase Connection
 export COUCHBASE_CONNECTION_STRING="couchbase://localhost"
 export COUCHBASE_USERNAME="your-username"
 export COUCHBASE_PASSWORD="your-password"

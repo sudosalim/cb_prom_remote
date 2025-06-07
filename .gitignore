@@ -17,8 +17,6 @@ dist/
 go.work
 
 # Build artifacts
-remote-write
-remote-read
 *.bin
 
 # Environment files (contain sensitive credentials)
@@ -29,12 +27,9 @@ config/*.env
 
 # Configuration files with credentials
 config/local.yaml
-config/production.yaml
-config/staging.yaml
 *.local.yaml
 
 # Docker
-.dockerignore
 compose.override.yml
 compose.override.yaml
 
@@ -81,7 +76,7 @@ certificates/
 *.backup
 
 # Local development overrides
-docker-compose.local.yml
+compose.local.yml
 local-config.yaml
 
 # Generated protobuf files (if we want to regenerate them)

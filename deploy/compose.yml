@@ -19,7 +19,7 @@ services:
       # Storage settings
       - STORAGE_BATCH_SIZE=100
       - STORAGE_FLUSH_INTERVAL=2s
-      - STORAGE_TIMESERIES_INTERVAL=5m
+      - STORAGE_TIMESERIES_INTERVAL=1h
       - STORAGE_RETENTION_PERIOD=24h
 
       # Server settings
