@@ -29,8 +29,7 @@ services:
       interval: 60s
       timeout: 15s
       retries: 3
-    networks:
-      - perf-network
+
   # vmagent for local testing
   vmagent:
     image: victoriametrics/vmagent:latest
@@ -48,11 +47,3 @@ services:
       interval: 60s
       timeout: 15s
       retries: 3
-    networks:
-      - perf-network
-
-  # For my local testing. Check if you have this network in your local machine.
-networks:
-  perf-network:
-    name: local-perf-testing
-    external: true
