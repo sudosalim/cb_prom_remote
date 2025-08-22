@@ -1,6 +1,6 @@
 module github.com/sudosalim/cb_prom_remote
 
-go 1.21
+go 1.25
 
 require (
 	github.com/couchbase/gocb/v2 v2.7.0
