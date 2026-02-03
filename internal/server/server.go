@@ -57,6 +57,9 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
+	// Log server creation and endpoints
+	fmt.Printf("[server] HTTP server created on %s (endpoints: /api/v1/write, /health, /ready)\n", cfg.Server.ListenAddress)
+
 	return &Server{
 		httpServer:   httpServer,
 		writeHandler: writeHandler,

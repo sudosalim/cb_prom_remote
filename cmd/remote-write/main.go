@@ -31,6 +31,14 @@ func main() {
 		cfg.Server.ListenAddress = *listenAddr
 	}
 
+	// Log key startup settings
+	log.Println("--- Remote Write Startup Configuration ---")
+	log.Printf("Server listen address: %s", cfg.Server.ListenAddress)
+	log.Printf("Couchbase connection string: %s", cfg.Couchbase.ConnectionString)
+	log.Printf("Couchbase bucket: %s, scope: %s, collection: %s", cfg.Couchbase.Bucket, cfg.Couchbase.Scope, cfg.Couchbase.Collection)
+	log.Printf("Storage batch size: %d, flush interval: %s, time series type: %s", cfg.Storage.BatchSize, cfg.Storage.FlushInterval, cfg.Storage.TimeSeriesType)
+	log.Println("-----------------------------------------")
+
 	// Create and start server
 	srv, err := server.NewServer(cfg)
 	if err != nil {
