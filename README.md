@@ -1,4 +1,4 @@
-# Couchbase Prometheus Remote Storage (Personal)
+# Couchbase Prometheus Remote Storage
 
 A basic Prometheus-compatible remote storage implementation writng to a Couchbase cluster.
 
@@ -20,13 +20,32 @@ This project provides separate services for remote write and remote read, which 
 │   ├── config/               # Configuration management
 │   ├── protocol/             # Prometheus protocol handling
 │   ├── storage/              # Couchbase storage interface using the Go SDK
-│   ├── processor/            # Data processing logic
-│   └── metrics/              # Internal metrics
 ├── internal/server/          # HTTP server implementations
 ├── proto/                    # Protobuf definitions
 ├── deploy/                   # Docker deployment configurations
 └── test/                     # Integration tests
 ```
+
+
+## Time Series Storage: Regular vs Irregular
+
+This project supports two storage modes for time series data:
+
+### Irregular Series (default)
+- Each sample is stored as a `[timestamp, value]` pair.
+- Documents can contain samples with arbitrary, non-uniform intervals.
+- Best for metrics with missing data points or variable scrape intervals.
+- Data is stored as an array of pairs: `[[ts1, v1], [ts2, v2], ...]`.
+
+### Regular Series
+- Samples are stored as a dense array of values, with a fixed interval between them.
+- Each document covers a fixed time window (e.g., 1 hour), and each slot represents a regular interval (e.g., 1 minute).
+- More efficient for high-cardinality, regular metrics.
+- Data is stored as an array of values: `[v1, v2, v3, ...]` with metadata for start, end, and interval.
+
+The storage mode is controlled by the `STORAGE_TIMESERIES_TYPE` setting (`irregular` or `regular`).
+
+---
 
 ## Services
 
@@ -38,6 +57,25 @@ This project provides separate services for remote write and remote read, which 
 ### Remote Read Service (Not yet implemented)
 - Handles Prometheus remote read queries
 - Retrieves time series data from Couchbase
+
+---
+
+## Key Storage Settings
+
+The following environment variables (or YAML config keys) control storage behavior:
+
+- `STORAGE_TIMESERIES_TYPE`: `irregular` (default) or `regular`. Controls storage format.
+- `STORAGE_TIMESERIES_INTERVAL`: Time window for each document (e.g., `1h`). All values that happens within the interval will reside in the same JSON document.
+- `STORAGE_REGULAR_SAMPLE_INTERVAL`: Interval between samples in regular mode (e.g., `1m`).
+- `STORAGE_BATCH_SIZE`: Number of time series to buffer before flushing to the server for storage.
+- `STORAGE_FLUSH_INTERVAL`: Max time to wait before flushing a batch.
+- `STORAGE_DOCUMENT_SIZE_LIMIT`: Max document size in bytes.
+- `STORAGE_RETENTION_PERIOD`: How long documents are retained. This is set as a Time-to-live (TTL) for the data.
+
+
+See `pkg/config/config.go` for all available options and defaults.
+
+---
 
 ## Configuration
 
