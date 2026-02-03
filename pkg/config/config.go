@@ -53,6 +53,7 @@ type StorageConfig struct {
 	CompressionEnabled    bool          `yaml:"compression_enabled" default:"true"`
 	TimeSeriesType        string        `yaml:"timeseries_type" default:"irregular"`  // "regular" or "irregular"
 	RegularSampleInterval time.Duration `yaml:"regular_sample_interval" default:"1m"` // Only used when timeseries_type=regular
+	Debug                 bool          `yaml:"debug" default:"false"`                // If true, include debug fields in documents
 }
 
 // MetricsConfig holds internal metrics configuration

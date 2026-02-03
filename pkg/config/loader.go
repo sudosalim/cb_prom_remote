@@ -43,6 +43,7 @@ func LoadConfig(configFile string) (*Config, error) {
 			CompressionEnabled:    getEnvBool("STORAGE_COMPRESSION_ENABLED", true),
 			TimeSeriesType:        strings.ToLower(getEnvString("STORAGE_TIMESERIES_TYPE", "irregular")),
 			RegularSampleInterval: getEnvDuration("STORAGE_REGULAR_SAMPLE_INTERVAL", time.Minute),
+			Debug:                 getEnvBool("STORAGE_DEBUG", false),
 		},
 		Metrics: MetricsConfig{
 			Enabled: getEnvBool("METRICS_ENABLED", true),

@@ -23,10 +23,10 @@ type TimeSeriesDocument struct {
 	Labels     map[string]string `json:"labels"`
 	SeriesHash string            `json:"series_hash"`
 
-	// Document management
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Version   int       `json:"version"`
+	// Document management (optional, only if debug enabled)
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	Version   *int       `json:"version,omitempty"`
 }
 
 // Sample represents a single metric sample
@@ -106,7 +106,7 @@ func float64SliceCopy(values []float64) []float64 {
 }
 
 // ToDocument converts TimeSeries to a Couchbase time series document
-func (ts *TimeSeries) ToDocument(isRegular bool, interval time.Duration) *TimeSeriesDocument {
+func (ts *TimeSeries) ToDocument(isRegular bool, interval time.Duration, debug bool) *TimeSeriesDocument {
 	if len(ts.Samples) == 0 {
 		return nil
 	}
@@ -115,9 +115,13 @@ func (ts *TimeSeries) ToDocument(isRegular bool, interval time.Duration) *TimeSe
 		MetricName: ts.MetricName,
 		Labels:     ts.Labels,
 		SeriesHash: ts.SeriesHash,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-		Version:    1,
+	}
+	if debug {
+		now := time.Now()
+		v := 1
+		doc.CreatedAt = &now
+		doc.UpdatedAt = &now
+		doc.Version = &v
 	}
 
 	// Set start and end timestamps
@@ -148,7 +152,7 @@ func (ts *TimeSeries) ToDocument(isRegular bool, interval time.Duration) *TimeSe
 // BuildRegularDocument creates a Couchbase regular time series document for a fixed window.
 // windowStartMs and windowEndMs define the document window; intervalMs is the time between consecutive values.
 // Samples are bucketed into slots; unfilled slots get math.NaN(). Multiple samples in the same slot use the last value.
-func BuildRegularDocument(metricName string, labels map[string]string, seriesHash string, windowStartMs, windowEndMs, intervalMs int64, samples []Sample) *TimeSeriesDocument {
+func BuildRegularDocument(metricName string, labels map[string]string, seriesHash string, windowStartMs, windowEndMs, intervalMs int64, samples []Sample, debug bool) *TimeSeriesDocument {
 	if intervalMs <= 0 || windowEndMs <= windowStartMs {
 		return nil
 	}
@@ -163,8 +167,7 @@ func BuildRegularDocument(metricName string, labels map[string]string, seriesHas
 	for i, s := range samples {
 		values[i] = s.Value
 	}
-	now := time.Now()
-	return &TimeSeriesDocument{
+	doc := &TimeSeriesDocument{
 		TsStart:    samples[0].Timestamp,
 		TsEnd:      samples[len(samples)-1].Timestamp,
 		TsInterval: &intervalMs,
@@ -172,10 +175,15 @@ func BuildRegularDocument(metricName string, labels map[string]string, seriesHas
 		MetricName: metricName,
 		Labels:     labels,
 		SeriesHash: seriesHash,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-		Version:    1,
 	}
+	if debug {
+		now := time.Now()
+		v := 1
+		doc.CreatedAt = &now
+		doc.UpdatedAt = &now
+		doc.Version = &v
+	}
+	return doc
 }
 
 // IsStaleMarker checks if a value is a Prometheus stale marker

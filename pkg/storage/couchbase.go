@@ -228,9 +228,9 @@ func (w *CouchbaseWriter) flushBatch(ctx context.Context) error {
 				for _, ts := range newSeries {
 					allSamples = append(allSamples, ts.Samples...)
 				}
-				finalDoc = BuildRegularDocument(newSeries[0].MetricName, newSeries[0].Labels, newSeries[0].SeriesHash, windowStartMs, windowEndMs, intervalMs, allSamples)
+				finalDoc = BuildRegularDocument(newSeries[0].MetricName, newSeries[0].Labels, newSeries[0].SeriesHash, windowStartMs, windowEndMs, intervalMs, allSamples, w.config.Storage.Debug)
 			} else {
-				finalDoc = newSeries[0].ToDocument(false, 0)
+				finalDoc = newSeries[0].ToDocument(false, 0, w.config.Storage.Debug)
 				if finalDoc != nil {
 					for _, ts := range newSeries[1:] {
 						if err := w.mergeTimeSeriesIntoDocument(finalDoc, ts); err != nil {
@@ -272,7 +272,6 @@ func (w *CouchbaseWriter) mergeTimeSeriesIntoDocument(doc *TimeSeriesDocument, t
 
 	// Regular format: update slots in value array
 	if doc.TsInterval != nil {
-		// Always convert TsData to []float64 (handles []interface{} from JSON)
 		existing, err := regularTsDataToFloat64(doc.TsData)
 		if err != nil {
 			return fmt.Errorf("unexpected ts_data type for regular series: %w", err)
@@ -282,8 +281,14 @@ func (w *CouchbaseWriter) mergeTimeSeriesIntoDocument(doc *TimeSeriesDocument, t
 		}
 		doc.TsData = existing
 		doc.TsEnd = ts.Samples[len(ts.Samples)-1].Timestamp
-		doc.UpdatedAt = time.Now()
-		doc.Version++
+		// Only update debug fields if enabled
+		if w.config.Storage.Debug {
+			now := time.Now()
+			doc.UpdatedAt = &now
+			if doc.Version != nil {
+				*doc.Version++
+			}
+		}
 		return nil
 	}
 
@@ -306,9 +311,13 @@ func (w *CouchbaseWriter) mergeTimeSeriesIntoDocument(doc *TimeSeriesDocument, t
 		}
 		doc.TsData = newData
 	}
-
-	doc.UpdatedAt = time.Now()
-	doc.Version++
+	if w.config.Storage.Debug {
+		now := time.Now()
+		doc.UpdatedAt = &now
+		if doc.Version != nil {
+			*doc.Version++
+		}
+	}
 	return nil
 }
 
@@ -329,8 +338,13 @@ func (w *CouchbaseWriter) appendTimeSeriestoDocument(doc *TimeSeriesDocument, ts
 		}
 		doc.TsData = existing
 		doc.TsEnd = ts.Samples[len(ts.Samples)-1].Timestamp
-		doc.UpdatedAt = time.Now()
-		doc.Version++
+		if w.config.Storage.Debug {
+			now := time.Now()
+			doc.UpdatedAt = &now
+			if doc.Version != nil {
+				*doc.Version++
+			}
+		}
 		return nil
 	}
 
@@ -365,9 +379,13 @@ func (w *CouchbaseWriter) appendTimeSeriestoDocument(doc *TimeSeriesDocument, ts
 		}
 		doc.TsData = newData
 	}
-
-	doc.UpdatedAt = time.Now()
-	doc.Version++
+	if w.config.Storage.Debug {
+		now := time.Now()
+		doc.UpdatedAt = &now
+		if doc.Version != nil {
+			*doc.Version++
+		}
+	}
 	return nil
 }
 
