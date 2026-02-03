@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -11,12 +12,12 @@ import (
 func LoadConfig(configFile string) (*Config, error) {
 	cfg := &Config{
 		Server: ServerConfig{
-			ListenAddress:    getEnvString("SERVER_LISTEN_ADDRESS", ":8080"),
-			ReadTimeout:      getEnvDuration("SERVER_READ_TIMEOUT", 30*time.Second),
-			WriteTimeout:     getEnvDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:      getEnvDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
-			MaxRequestSize:   getEnvInt64("SERVER_MAX_REQUEST_SIZE", 32*1024*1024),
-			EnableProfiling:  getEnvBool("SERVER_ENABLE_PROFILING", false),
+			ListenAddress:   getEnvString("SERVER_LISTEN_ADDRESS", ":8080"),
+			ReadTimeout:     getEnvDuration("SERVER_READ_TIMEOUT", 30*time.Second),
+			WriteTimeout:    getEnvDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
+			IdleTimeout:     getEnvDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			MaxRequestSize:  getEnvInt64("SERVER_MAX_REQUEST_SIZE", 32*1024*1024),
+			EnableProfiling: getEnvBool("SERVER_ENABLE_PROFILING", false),
 			TLS: TLSConfig{
 				Enabled:  getEnvBool("SERVER_TLS_ENABLED", false),
 				CertFile: getEnvString("SERVER_TLS_CERT_FILE", ""),
@@ -34,12 +35,14 @@ func LoadConfig(configFile string) (*Config, error) {
 			KVTimeout:        getEnvDuration("COUCHBASE_KV_TIMEOUT", 5*time.Second),
 		},
 		Storage: StorageConfig{
-			BatchSize:           getEnvInt("STORAGE_BATCH_SIZE", 1000),
-			FlushInterval:       getEnvDuration("STORAGE_FLUSH_INTERVAL", 5*time.Second),
-			DocumentSizeLimit:   getEnvInt("STORAGE_DOCUMENT_SIZE_LIMIT", 20*1024*1024),
-			TimeSeriesInterval:  getEnvDuration("STORAGE_TIMESERIES_INTERVAL", time.Hour),
-			RetentionPeriod:     getEnvDuration("STORAGE_RETENTION_PERIOD", 720*time.Hour),
-			CompressionEnabled:  getEnvBool("STORAGE_COMPRESSION_ENABLED", true),
+			BatchSize:             getEnvInt("STORAGE_BATCH_SIZE", 1000),
+			FlushInterval:         getEnvDuration("STORAGE_FLUSH_INTERVAL", 5*time.Second),
+			DocumentSizeLimit:     getEnvInt("STORAGE_DOCUMENT_SIZE_LIMIT", 20*1024*1024),
+			TimeSeriesInterval:    getEnvDuration("STORAGE_TIMESERIES_INTERVAL", time.Hour),
+			RetentionPeriod:       getEnvDuration("STORAGE_RETENTION_PERIOD", 720*time.Hour),
+			CompressionEnabled:    getEnvBool("STORAGE_COMPRESSION_ENABLED", true),
+			TimeSeriesType:        strings.ToLower(getEnvString("STORAGE_TIMESERIES_TYPE", "irregular")),
+			RegularSampleInterval: getEnvDuration("STORAGE_REGULAR_SAMPLE_INTERVAL", time.Minute),
 		},
 		Metrics: MetricsConfig{
 			Enabled: getEnvBool("METRICS_ENABLED", true),
@@ -98,4 +101,4 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 		}
 	}
 	return defaultValue
-} 
+}

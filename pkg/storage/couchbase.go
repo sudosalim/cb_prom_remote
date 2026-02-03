@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,15 +22,15 @@ type CouchbaseWriter struct {
 	bucket     *gocb.Bucket
 	collection *gocb.Collection
 	config     *config.Config
-	
+
 	// Batching
 	batchMutex sync.Mutex
 	batch      []*TimeSeries
 	batchTimer *time.Timer
-	
+
 	// Metrics
 	metrics *StorageMetrics
-	
+
 	// Shutdown
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -109,12 +110,12 @@ func (w *CouchbaseWriter) Write(ctx context.Context, req *pb.WriteRequest) error
 	timeSeries := make([]*TimeSeries, 0, len(req.Timeseries))
 	for _, pbSeries := range req.Timeseries {
 		ts := NewTimeSeriesFromProto(pbSeries)
-		
+
 		// Validate labels
 		if err := ValidateLabels(ts.Labels); err != nil {
 			return fmt.Errorf("invalid labels: %w", err)
 		}
-		
+
 		// Filter out stale markers and any NaN values
 		filteredSamples := make([]Sample, 0, len(ts.Samples))
 		for _, sample := range ts.Samples {
@@ -124,7 +125,7 @@ func (w *CouchbaseWriter) Write(ctx context.Context, req *pb.WriteRequest) error
 			}
 		}
 		ts.Samples = filteredSamples
-		
+
 		if len(ts.Samples) > 0 {
 			timeSeries = append(timeSeries, ts)
 		}
@@ -160,7 +161,7 @@ func (w *CouchbaseWriter) flushBatch(ctx context.Context) error {
 		w.batchMutex.Unlock()
 		return nil
 	}
-	
+
 	// Take current batch and reset
 	currentBatch := w.batch
 	w.batch = make([]*TimeSeries, 0, w.config.Storage.BatchSize)
@@ -173,7 +174,7 @@ func (w *CouchbaseWriter) flushBatch(ctx context.Context) error {
 
 	// Group new time series by document key
 	newSeriesByDocKey := make(map[string][]*TimeSeries)
-	
+
 	for _, ts := range currentBatch {
 		timeWindow := time.UnixMilli(ts.Samples[0].Timestamp)
 		docKey := ts.DocumentKey(timeWindow, w.config.Storage.TimeSeriesInterval)
@@ -187,7 +188,7 @@ func (w *CouchbaseWriter) flushBatch(ctx context.Context) error {
 		getResult, err := w.collection.Get(docKey, &gocb.GetOptions{
 			Timeout: w.config.Couchbase.KVTimeout,
 		})
-		
+
 		if err == nil {
 			// Document exists, decode it
 			err = getResult.Content(&existingDoc)
@@ -217,18 +218,30 @@ func (w *CouchbaseWriter) flushBatch(ctx context.Context) error {
 				}
 			}
 		} else {
-			// Create new document from first time series
-			finalDoc = newSeries[0].ToDocument(false, 0)
+			// Create new document
+			if isRegular(w.config) {
+				timeWindow := time.UnixMilli(newSeries[0].Samples[0].Timestamp).Truncate(w.config.Storage.TimeSeriesInterval)
+				windowStartMs := timeWindow.UnixMilli()
+				windowEndMs := windowStartMs + w.config.Storage.TimeSeriesInterval.Milliseconds()
+				intervalMs := w.config.Storage.RegularSampleInterval.Milliseconds()
+				var allSamples []Sample
+				for _, ts := range newSeries {
+					allSamples = append(allSamples, ts.Samples...)
+				}
+				finalDoc = BuildRegularDocument(newSeries[0].MetricName, newSeries[0].Labels, newSeries[0].SeriesHash, windowStartMs, windowEndMs, intervalMs, allSamples)
+			} else {
+				finalDoc = newSeries[0].ToDocument(false, 0)
+				if finalDoc != nil {
+					for _, ts := range newSeries[1:] {
+						if err := w.mergeTimeSeriesIntoDocument(finalDoc, ts); err != nil {
+							log.Printf("Failed to merge time series into new document: %v", err)
+							continue
+						}
+					}
+				}
+			}
 			if finalDoc == nil {
 				continue
-			}
-
-			// Merge remaining time series into the new document
-			for _, ts := range newSeries[1:] {
-				if err := w.mergeTimeSeriesIntoDocument(finalDoc, ts); err != nil {
-					log.Printf("Failed to merge time series into new document: %v", err)
-					continue
-				}
 			}
 		}
 
@@ -237,7 +250,7 @@ func (w *CouchbaseWriter) flushBatch(ctx context.Context) error {
 			Expiry:  w.config.Storage.RetentionPeriod,
 			Timeout: w.config.Couchbase.KVTimeout,
 		})
-		
+
 		if err != nil {
 			w.metrics.WriteErrorsTotal++
 			log.Printf("Failed to write document %s: %v", docKey, err)
@@ -247,35 +260,46 @@ func (w *CouchbaseWriter) flushBatch(ctx context.Context) error {
 
 	w.metrics.WritesTotal++
 	log.Printf("Flushed batch of %d time series into %d documents", len(currentBatch), len(newSeriesByDocKey))
-	
+
 	return nil
 }
 
 // mergeTimeSeriesIntoDocument merges a time series into an existing document
 func (w *CouchbaseWriter) mergeTimeSeriesIntoDocument(doc *TimeSeriesDocument, ts *TimeSeries) error {
-	// For simplicity, we'll append the new samples to the existing data
-	// In a production system, you might want more sophisticated merging logic
-	
 	if len(ts.Samples) == 0 {
 		return nil
 	}
 
-	// Update timestamps
+	// Regular format: update slots in value array
+	if doc.TsInterval != nil {
+		// Always convert TsData to []float64 (handles []interface{} from JSON)
+		existing, err := regularTsDataToFloat64(doc.TsData)
+		if err != nil {
+			return fmt.Errorf("unexpected ts_data type for regular series: %w", err)
+		}
+		for _, s := range ts.Samples {
+			existing = append(existing, s.Value)
+		}
+		doc.TsData = existing
+		doc.TsEnd = ts.Samples[len(ts.Samples)-1].Timestamp
+		doc.UpdatedAt = time.Now()
+		doc.Version++
+		return nil
+	}
+
+	// Irregular format
 	if ts.Samples[0].Timestamp < doc.TsStart {
 		doc.TsStart = ts.Samples[0].Timestamp
 	}
 	if ts.Samples[len(ts.Samples)-1].Timestamp > doc.TsEnd {
 		doc.TsEnd = ts.Samples[len(ts.Samples)-1].Timestamp
 	}
-
-	// Append samples (assuming irregular format)
 	if existingData, ok := doc.TsData.([][]interface{}); ok {
 		for _, sample := range ts.Samples {
 			existingData = append(existingData, []interface{}{sample.Timestamp, sample.Value})
 		}
 		doc.TsData = existingData
 	} else {
-		// Convert to irregular format and add new samples
 		newData := make([][]interface{}, 0)
 		for _, sample := range ts.Samples {
 			newData = append(newData, []interface{}{sample.Timestamp, sample.Value})
@@ -285,7 +309,6 @@ func (w *CouchbaseWriter) mergeTimeSeriesIntoDocument(doc *TimeSeriesDocument, t
 
 	doc.UpdatedAt = time.Now()
 	doc.Version++
-
 	return nil
 }
 
@@ -295,43 +318,47 @@ func (w *CouchbaseWriter) appendTimeSeriestoDocument(doc *TimeSeriesDocument, ts
 		return nil
 	}
 
-	// Update ts_end if new samples are later
+	// Regular format: update slots in value array (fixed window, no ts_start/ts_end change)
+	if doc.TsInterval != nil {
+		existing, err := regularTsDataToFloat64(doc.TsData)
+		if err != nil {
+			return fmt.Errorf("unexpected ts_data type for regular series: %w", err)
+		}
+		for _, s := range ts.Samples {
+			existing = append(existing, s.Value)
+		}
+		doc.TsData = existing
+		doc.TsEnd = ts.Samples[len(ts.Samples)-1].Timestamp
+		doc.UpdatedAt = time.Now()
+		doc.Version++
+		return nil
+	}
+
+	// Irregular format
 	if ts.Samples[len(ts.Samples)-1].Timestamp > doc.TsEnd {
 		doc.TsEnd = ts.Samples[len(ts.Samples)-1].Timestamp
 	}
-
-	// Update ts_start if new samples are earlier
 	if ts.Samples[0].Timestamp < doc.TsStart {
 		doc.TsStart = ts.Samples[0].Timestamp
 	}
-
-	// Append new samples to existing data (handling both formats from JSON unmarshaling)
 	if existingData, ok := doc.TsData.([][]interface{}); ok {
-		// Direct format match - append new samples
 		updatedData := existingData
 		for _, sample := range ts.Samples {
 			updatedData = append(updatedData, []interface{}{sample.Timestamp, sample.Value})
 		}
 		doc.TsData = updatedData
 	} else if existingSlice, ok := doc.TsData.([]interface{}); ok {
-		// JSON unmarshaling converted [][]interface{} to []interface{} - convert back
 		updatedData := make([][]interface{}, 0, len(existingSlice)+len(ts.Samples))
-
-		// Convert existing data
 		for _, item := range existingSlice {
 			if itemSlice, ok := item.([]interface{}); ok && len(itemSlice) == 2 {
 				updatedData = append(updatedData, itemSlice)
 			}
 		}
-
-		// Add new samples
 		for _, sample := range ts.Samples {
 			updatedData = append(updatedData, []interface{}{sample.Timestamp, sample.Value})
 		}
-
 		doc.TsData = updatedData
 	} else {
-		// If existing data is not in any expected format, start fresh with new samples
 		newData := make([][]interface{}, 0, len(ts.Samples))
 		for _, sample := range ts.Samples {
 			newData = append(newData, []interface{}{sample.Timestamp, sample.Value})
@@ -339,10 +366,8 @@ func (w *CouchbaseWriter) appendTimeSeriestoDocument(doc *TimeSeriesDocument, ts
 		doc.TsData = newData
 	}
 
-	// Update metadata
 	doc.UpdatedAt = time.Now()
 	doc.Version++
-
 	return nil
 }
 
@@ -360,15 +385,40 @@ func isNaNOrInf(value float64) bool {
 	return math.IsNaN(value) || math.IsInf(value, 0)
 }
 
+// isRegular returns true when config requests Couchbase regular time series format
+func isRegular(cfg *config.Config) bool {
+	return strings.EqualFold(cfg.Storage.TimeSeriesType, "regular")
+}
+
+// regularTsDataToFloat64 returns TsData as []float64 for regular format (handles JSON []interface{} decode)
+func regularTsDataToFloat64(tsData interface{}) ([]float64, error) {
+	if values, ok := tsData.([]float64); ok {
+		return values, nil
+	}
+	slice, ok := tsData.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("regular document has invalid TsData type")
+	}
+	values := make([]float64, len(slice))
+	for i, v := range slice {
+		if f, ok := v.(float64); ok {
+			values[i] = f
+		} else {
+			values[i] = math.NaN()
+		}
+	}
+	return values, nil
+}
+
 // startBatchFlusher starts a background goroutine to flush batches periodically
 func (w *CouchbaseWriter) startBatchFlusher() {
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
-		
+
 		ticker := time.NewTicker(w.config.Storage.FlushInterval)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ticker.C:
@@ -389,7 +439,7 @@ func (w *CouchbaseWriter) Health(ctx context.Context) error {
 		ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeKeyValue},
 		Timeout:      w.config.Couchbase.KVTimeout,
 	})
-	
+
 	if err != nil {
 		w.metrics.ConnectionStatus = "unhealthy"
 		return fmt.Errorf("health check failed: %w", err)
@@ -408,23 +458,23 @@ func (w *CouchbaseWriter) Health(ctx context.Context) error {
 // Close implements the Writer interface
 func (w *CouchbaseWriter) Close() error {
 	log.Println("Closing Couchbase writer...")
-	
+
 	// Signal shutdown
 	close(w.done)
-	
+
 	// Wait for background goroutines
 	w.wg.Wait()
-	
+
 	// Flush any remaining data
 	if err := w.flushBatch(context.Background()); err != nil {
 		log.Printf("Error flushing final batch: %v", err)
 	}
-	
+
 	// Close Couchbase connection
 	if err := w.cluster.Close(nil); err != nil {
 		return fmt.Errorf("failed to close Couchbase cluster: %w", err)
 	}
-	
+
 	log.Println("Couchbase writer closed")
 	return nil
 }
@@ -434,6 +484,6 @@ func (w *CouchbaseWriter) GetMetrics() *StorageMetrics {
 	w.batchMutex.Lock()
 	w.metrics.QueueDepth = len(w.batch)
 	w.batchMutex.Unlock()
-	
+
 	return w.metrics
-} 
+}

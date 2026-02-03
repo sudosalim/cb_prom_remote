@@ -25,8 +25,10 @@ storage:
   flush_interval: "5s"
   document_size_limit: 20971520  # 20MB
   timeseries_interval: "1h"      # Group samples by hour
-  retention_period: "720h"       # 30 days
+  retention_period: "720h"        # 30 days
   compression_enabled: true
+  timeseries_type: "irregular"   # "regular" or "irregular"
+  regular_sample_interval: "1m"   # Only when timeseries_type=regular
 
 metrics:
   enabled: true

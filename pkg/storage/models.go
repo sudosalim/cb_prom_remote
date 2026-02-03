@@ -13,16 +13,16 @@ import (
 // TimeSeriesDocument represents a Couchbase time series document
 type TimeSeriesDocument struct {
 	// Required fields for Couchbase time series
-	TsStart    int64       `json:"ts_start"`    // Start timestamp in milliseconds
-	TsEnd      int64       `json:"ts_end"`      // End timestamp in milliseconds  
+	TsStart    int64       `json:"ts_start"`              // Start timestamp in milliseconds
+	TsEnd      int64       `json:"ts_end"`                // End timestamp in milliseconds
 	TsInterval *int64      `json:"ts_interval,omitempty"` // Interval for regular series (milliseconds)
-	TsData     interface{} `json:"ts_data"`     // Array of values or [timestamp, value] pairs
+	TsData     interface{} `json:"ts_data"`               // Array of values or [timestamp, value] pairs
 
 	// Metadata fields
 	MetricName string            `json:"metric_name"`
 	Labels     map[string]string `json:"labels"`
 	SeriesHash string            `json:"series_hash"`
-	
+
 	// Document management
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -58,7 +58,7 @@ func CreateSeriesHash(labels map[string]string) string {
 		labelPairs = append(labelPairs, fmt.Sprintf("%s=%s", k, v))
 	}
 	sort.Strings(labelPairs)
-	
+
 	labelString := strings.Join(labelPairs, ",")
 	hash := md5.Sum([]byte(labelString))
 	return fmt.Sprintf("%x", hash)[:16] // Use first 16 characters
@@ -98,6 +98,13 @@ func NewTimeSeriesFromProto(pbSeries *pb.TimeSeries) *TimeSeries {
 	return ts
 }
 
+// For regular format: just return a copy of the values slice
+func float64SliceCopy(values []float64) []float64 {
+	out := make([]float64, len(values))
+	copy(out, values)
+	return out
+}
+
 // ToDocument converts TimeSeries to a Couchbase time series document
 func (ts *TimeSeries) ToDocument(isRegular bool, interval time.Duration) *TimeSeriesDocument {
 	if len(ts.Samples) == 0 {
@@ -118,15 +125,14 @@ func (ts *TimeSeries) ToDocument(isRegular bool, interval time.Duration) *TimeSe
 	doc.TsEnd = ts.Samples[len(ts.Samples)-1].Timestamp
 
 	if isRegular && interval > 0 {
-		// Regular time series - store only values
+		// Regular time series - append-only, no nulls
 		intervalMs := interval.Milliseconds()
 		doc.TsInterval = &intervalMs
-		
 		values := make([]float64, len(ts.Samples))
 		for i, sample := range ts.Samples {
 			values[i] = sample.Value
 		}
-		doc.TsData = values
+		doc.TsData = float64SliceCopy(values)
 	} else {
 		// Irregular time series - store [timestamp, value] pairs
 		data := make([][]interface{}, len(ts.Samples))
@@ -137,6 +143,39 @@ func (ts *TimeSeries) ToDocument(isRegular bool, interval time.Duration) *TimeSe
 	}
 
 	return doc
+}
+
+// BuildRegularDocument creates a Couchbase regular time series document for a fixed window.
+// windowStartMs and windowEndMs define the document window; intervalMs is the time between consecutive values.
+// Samples are bucketed into slots; unfilled slots get math.NaN(). Multiple samples in the same slot use the last value.
+func BuildRegularDocument(metricName string, labels map[string]string, seriesHash string, windowStartMs, windowEndMs, intervalMs int64, samples []Sample) *TimeSeriesDocument {
+	if intervalMs <= 0 || windowEndMs <= windowStartMs {
+		return nil
+	}
+	numSlots := (windowEndMs - windowStartMs) / intervalMs
+	if numSlots <= 0 {
+		return nil
+	}
+	if len(samples) == 0 {
+		return nil
+	}
+	values := make([]float64, len(samples))
+	for i, s := range samples {
+		values[i] = s.Value
+	}
+	now := time.Now()
+	return &TimeSeriesDocument{
+		TsStart:    samples[0].Timestamp,
+		TsEnd:      samples[len(samples)-1].Timestamp,
+		TsInterval: &intervalMs,
+		TsData:     float64SliceCopy(values),
+		MetricName: metricName,
+		Labels:     labels,
+		SeriesHash: seriesHash,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		Version:    1,
+	}
 }
 
 // IsStaleMarker checks if a value is a Prometheus stale marker
@@ -160,4 +199,4 @@ func ValidateLabels(labels map[string]string) error {
 		}
 	}
 	return nil
-} 
+}
